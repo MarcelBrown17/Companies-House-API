@@ -1,90 +1,65 @@
 <?php
 /**
- * The plugin bootstrap file
- *
- * This file is read by WordPress to generate the plugin information in the plugin
- * admin area. This file also includes all of the dependencies used by the plugin,
- * registers the activation and deactivation functions, and defines a function
- * that starts the plugin.
- *
- * @link              https://elemental.co.za
- * @since             1.0.0
- * @package           Company_Api
- *
- * @wordpress-plugin
- * Plugin Name:       Company API
- * Plugin URI:        https://github.com/marcelb/company-api
- * Description:       Integrates Companies House API with Gravity Forms to search companies and directors.
- * Version:           1.0.0
- * Author:            Marcel Brown
- * Author URI:        https://elemental.co.za
- * License:           GPL-2.0+
- * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
- * Text Domain:       company-api
- * Domain Path:       /languages
+ * Plugin Name: Company House API
+ * Plugin URI: https://github.com/MarcelBrown17/Companies-House-API
+ * Description: Integrates Companies House API with Gravity Forms to search companies and directors.
+ * Version: 1.0.0
+ * Author: Marcel Brown
+ * Author URI: https://github.com/MarcelBrown17
+ * Text Domain: company-api-plugin
  */
 
-// If this file is called directly, abort.
-if ( ! defined( 'WPINC' ) ) {
-	die;
+// Security check
+if (!defined('ABSPATH')) {
+    exit;
 }
 
-/**
- * Currently plugin version.
- * Start at version 1.0.0 and use SemVer - https://semver.org
- */
-define( 'COMPANY_API_VERSION', '1.0.0' );
+// Set up plugin constants for paths and versioning
+define('CHL_VERSION', '1.0.0');
+define('CHL_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('CHL_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-/**
- * Plugin directory path.
- */
-define( 'COMPANY_API_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+// Load all the plugin classes
+require_once CHL_PLUGIN_DIR . 'includes/class-api-handler.php';
+require_once CHL_PLUGIN_DIR . 'includes/class-admin-settings.php';
+require_once CHL_PLUGIN_DIR . 'includes/class-gravity-forms.php';
+require_once CHL_PLUGIN_DIR . 'includes/class-shortcode.php';
 
-/**
- * Plugin directory URL.
- */
-define( 'COMPANY_API_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-
-/**
- * The code that runs during plugin activation.
- * This action is documented in includes/class-company-api-activator.php
- */
-function activate_company_api() {
-	require_once COMPANY_API_PLUGIN_DIR . 'includes/class-company-api-activator.php';
-	Company_Api_Activator::activate();
+// Boot up the admin settings page when we're in the admin area
+if (is_admin()) {
+    new CHL_Admin_Settings();
 }
 
-/**
- * The code that runs during plugin deactivation.
- * This action is documented in includes/class-company-api-deactivator.php
- */
-function deactivate_company_api() {
-	require_once COMPANY_API_PLUGIN_DIR . 'includes/class-company-api-deactivator.php';
-	Company_Api_Deactivator::deactivate();
+// Hook everything else into WordPress init
+add_action('init', function() {
+    new CHL_Gravity_Forms();
+    new CHL_Shortcode();
+});
+
+// Enqueue the company search JavaScript on the front-end
+add_action('wp_enqueue_scripts', 'chl_load_scripts', 999);
+function chl_load_scripts() {
+    wp_enqueue_script(
+        'chl-company-search',
+        CHL_PLUGIN_URL . 'public/js/company-search.js',
+        array('jquery'),
+        CHL_VERSION . '.' . time(),
+        true
+    );
+    
+    // Make the AJAX URL and nonce available to our JS
+    wp_localize_script('chl-company-search', 'chl_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('chl_nonce')
+    ));
 }
 
-register_activation_hook( __FILE__, 'activate_company_api' );
-register_deactivation_hook( __FILE__, 'deactivate_company_api' );
+// Create the API key option when plugin is activated
+register_activation_hook(__FILE__, function() {
+    add_option('chl_api_key', '');
+});
 
-/**
- * The core plugin class that is used to define internationalization,
- * admin-specific hooks, and public-facing site hooks.
- */
-require COMPANY_API_PLUGIN_DIR . 'includes/class-company-api.php';
-
-/**
- * Begins execution of the plugin.
- *
- * Since everything within the plugin is registered via hooks,
- * then kicking off the plugin from this point in the file does
- * not affect the page life cycle.
- *
- * @since    1.0.0
- */
-function run_company_api() {
-
-	$plugin = new Company_Api();
-	$plugin->run();
-
-}
-run_company_api();
+// Tidy up rewrite rules when deactivated
+register_deactivation_hook(__FILE__, function() {
+    flush_rewrite_rules();
+});
